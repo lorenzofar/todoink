@@ -1,33 +1,48 @@
+from __future__ import annotations
+
 import logging
 import os
-import yaml
-from flask import Flask
+from abc import abstractmethod
+from typing import Generic, Set, TypeVar
 
-logging.basicConfig(level=logging.DEBUG)
+LOGGER = logging.getLogger()
 
-basedir = os.path.abspath(os.path.dirname(__file__))
-DEFAULT_CONFIG_FILE = os.path.join(basedir, "config.yaml")
 
-class YamlConfig:
+class Observable:
 
-    def __init__(self, config_file):
-        # Load config from a yaml file
-        with open(config_file) as f:
-            config = yaml.safe_load(f)
-            if config is not None:
-                for key, value in config.items():
-                    setattr(self, key.upper(), value)
+    def __init__(self):
+        self._observers: Set[Observer] = set()
 
-def create_app():
-    # Boilerplate to create  Flask app and load a config.yaml file
-    app = Flask(__name__)
-    config_file = os.environ.get('FLASK_CONFIG_FILE') or DEFAULT_CONFIG_FILE
-    logging.info(f"Base directory: {basedir}")
+    def register(self, observer: Observer):
+        self._observers.add(observer)
 
-    app.config.from_object(YamlConfig(config_file))
+    def unregister(self, observer: Observer):
+        self._observers.remove(observer)
 
-    # Register blueprints
-    from todoink.api import bp
-    app.register_blueprint(bp, url_prefix='/api')
+    def notify(self, *args, **kwargs):
+        for observer in self._observers:
+            observer.update(*args, **kwargs)
 
-    return app
+
+T = TypeVar('T', bound=Observable)
+
+
+class Observer(Generic[T]):
+    @abstractmethod
+    def update(self, *args, **kwargs):
+        raise NotImplementedError
+
+
+class SingletonMeta(type):
+    """
+    A metaclass for creating singleton classes
+    """
+
+    def __init__(self, name, bases, dict):
+        super(SingletonMeta, self).__init__(name, bases, dict)
+        self.instance = None
+
+    def __call__(self, *args, **kw):
+        if self.instance is None:
+            self.instance = super(SingletonMeta, self).__call__(*args, **kw)
+        return self.instance
